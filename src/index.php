@@ -1,6 +1,6 @@
 <?php
 	error_reporting(E_ERROR | E_WARNING | E_PARSE);
-	$db = new SQLite3("owovision.db");
+	$db = new SQLite3("/data/owovision.db");
 
 	$getNewUser = $_GET['newUser'] ?? null;
 	$getIdUser = $_GET['idUser'] ?? null;
