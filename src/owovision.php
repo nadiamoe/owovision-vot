@@ -1,9 +1,28 @@
 <?php
+	/*
+
+	owovision.php?newUser=XXXXXX : Genera un nuevo participante y devuelve su enlace para votar. Normalmente solo se invoca desde el bot del fediverso. Si ya existía, devuelve el mismo enlace.
+	owovision.php?idUser=XXXXXX : Carga la página para que una persona vote. Si ya ha votado, le muestra un mensaje de error.
+	owovision.php?getResults=1 : Obtiene los resultados finales ordenados por puntos. No tiene en cuenta los criterios de desempate ni muestra países que no hayan obtenido puntos.
+	owovision.php?getUserResults=1 : Muestra los votos de cada participante en orden creciente.
+	owovision.php?getUserResultsJson=1 : Genera el JSON que hay que añadir en el atributo "juries" del marcador de ScoreWiz.
+	owovision.php?prune=1 : Limpia las tablas de participantes y votos asignados, obligando a generar nuevos enlaces y votar de nuevo. ¡¡USAR CON PRECAUCIÓN!!
+	owovision.php?closeVote=1 : Cierra la posibilidad de votar una vez ha terminado el plazo.
+	owovision.php?openVote=1 : Reabre la posibilidad de votar. Útil para pruebas.
+
+	*/
+
 	error_reporting(E_ERROR | E_WARNING | E_PARSE);
 	$db = new SQLite3("/data/owovision.db");
 
 	$getNewUser = $_GET['newUser'] ?? null;
 	$getIdUser = $_GET['idUser'] ?? null;
+	$getResults = $_GET['getResults'] ?? null;
+	$getUserResults = $_GET['getUserResults'] ?? null;
+	$getUserResultsJson = $_GET['getUserResultsJson'] ?? null;
+	$prune = $_GET['prune'] ?? null;
+	$closeVote = $_GET['closeVote'] ?? null;
+	$openVote = $_GET['openVote'] ?? null;
 
 	if ($getNewUser)
 	{
@@ -33,6 +52,103 @@
 			return $row["idUser"];
 		}
 	}
+	else if ($getResults)
+	{
+		$statement = $db->prepare("SELECT SUM(points) AS puntos, COUNTRIES.name AS pais FROM POINTS LEFT JOIN COUNTRIES ON COUNTRIES.id = POINTS.country GROUP BY country ORDER BY SUM(points) DESC");
+		$result = $statement->execute();
+		echo("<pre>");
+		echo("Resultados:\n");
+		while($row = $result->fetchArray()) {
+			echo($row["puntos"] . "\t" . $row["pais"] . "\n");
+		}
+	}
+	else if ($getUserResults)
+	{
+		$statement = $db->prepare("SELECT USERS.handleUser AS handle, POINTS.points AS puntos, COUNTRIES.name AS pais FROM POINTS LEFT JOIN COUNTRIES ON COUNTRIES.id = POINTS.country LEFT JOIN USERS ON USERS.idUser = POINTS.idUser ORDER BY handle ASC, puntos ASC");
+		$result = $statement->execute();
+		echo("<pre>");
+		echo("Resultados por votante:\n");
+		while($row = $result->fetchArray()) {
+			echo($row["handle"] . "\t" . $row["puntos"] . "\t" . $row["pais"] . "\n");
+		}
+	}
+	else if ($getUserResultsJson)
+	{
+		$statement = $db->prepare("SELECT COUNT(DISTINCT(idUser)) as numVotantes FROM POINTS");
+		$result = $statement->execute();
+		$row = $result->fetchArray();
+		$numVotantes = $row['numVotantes'];
+
+		$statement = $db->prepare("SELECT USERS.handleUser AS handle, POINTS.points AS puntos, COUNTRIES.name AS pais, COUNTRIES.numero AS numero FROM POINTS LEFT JOIN COUNTRIES ON COUNTRIES.id = POINTS.country LEFT JOIN USERS ON USERS.idUser = POINTS.idUser ORDER BY handle ASC, puntos DESC");
+		$result = $statement->execute();
+		$contador = 1;
+		$fila = 0;
+		$yaHanVotado = 0;
+		$arrayVotos = [];
+		$yaRecontado = false;
+		echo("<pre>");
+
+		while($row = $result->fetchArray()) {
+			if ($yaRecontado == false) {
+				echo('"' . $contador .'": {' . "\n");
+				echo('  "name": "' . $row["handle"] . '",' . "\n");
+				echo('  "city": "",' . "\n");
+				echo('  "flag": "owo",' . "\n");
+				echo('  "order": ' . $contador . ',' . "\n");
+				echo('  "hasVotes": true,' . "\n");
+				echo('  "isCountry": false,' . "\n");
+				echo('  "buddy": "0",' . "\n");
+				echo('  "votes": [' . "\n");
+
+				$yaRecontado = true;
+				$contador++;
+			}
+
+			$arrayVotos[] = "    [" . $row["puntos"] . ", " . $row["numero"] . "]";
+
+			$fila++;
+			if ($fila == 20) {
+				// var_dump($arrayVotos);
+				$yaHanVotado++;
+				echo (implode(", \n", $arrayVotos));
+				echo ("\n");
+				echo ('  ]' . "\n");
+				if ($yaHanVotado == $numVotantes)
+					echo ('}' . "\n");
+				else
+					echo ('},' . "\n");
+				$fila = 0;
+				$yaRecontado = false;
+				$arrayVotos = [];
+			}
+			//echo($row["handle"] . "\t" . $row["puntos"] . "\t" . $row["pais"] . "\t" . $row["numero"]  . "\n");
+		}
+	}
+	else if ($prune)
+	{
+		$statement = $db->prepare("DELETE FROM POINTS WHERE 1");
+		$result = $statement->execute();
+		$statement = $db->prepare("DELETE FROM USERS WHERE 1");
+		$result = $statement->execute();
+		echo("<pre>");
+		echo("La base de datos ha sido limpiada.\n");
+	}
+	else if ($closeVote)
+	{
+		$statement = $db->prepare("UPDATE SETTINGS SET value=0 WHERE key='voteOpen'");
+		$result = $statement->execute();
+		$row = $result->fetchArray();
+		echo("<pre>");
+		echo("La votación se ha cerrado.\n");
+	}
+	else if ($openVote)
+	{
+		$statement = $db->prepare("UPDATE SETTINGS SET value=1 WHERE key='voteOpen'");
+		$result = $statement->execute();
+		$row = $result->fetchArray();
+		echo("<pre>");
+		echo("La votación se ha abierto.\n");
+	}
 	else
 	{
 ?>
@@ -42,7 +158,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Owovisión 2025</title>
+	<title>Owovisión 2026</title>
 	<link href="dragula.css" rel="stylesheet" type="text/css" />
 	<style>
 		@font-face {
@@ -145,6 +261,7 @@
 		.aut { background-image: url("./flags/aut.png"); }
 		.aze { background-image: url("./flags/aze.png"); }
 		.bel { background-image: url("./flags/bel.png"); }
+		.bul { background-image: url("./flags/bul.png"); }
 		.cyp { background-image: url("./flags/cyp.png"); }
 		.cze { background-image: url("./flags/cze.png"); }
 		.den { background-image: url("./flags/den.png"); }
@@ -162,6 +279,7 @@
 		.lat { background-image: url("./flags/lat.png"); }
 		.lit { background-image: url("./flags/lit.png"); }
 		.lux { background-image: url("./flags/lux.png"); }
+		.mdv { background-image: url("./flags/mdv.png"); }
 		.mlt { background-image: url("./flags/mlt.png"); }
 		.mne { background-image: url("./flags/mne.png"); }
 		.ned { background-image: url("./flags/ned.png"); }
@@ -318,31 +436,31 @@
 	<p class="center" style="margin-top:0;">Si estás desde un teléfono móvil es recomendable usar el "modo escritorio".</p>
 	<div class="tabla">
 		<div id="votos" class="container">
-			<div class="pais est">Estonia</div>
-			<div class="pais lat">Letonia</div>
-			<div class="pais lit">Lituania</div>
-			<div class="pais lux">Luxemburgo</div>
-			<div class="pais ned">Países Bajos</div>
-			<div class="pais arm">Armenia</div>
-			<div class="pais pol">Polonia</div>
-			<div class="pais ukr">Ucrania</div>
-			<div class="pais alb">Albania</div>
-			<div class="pais aut">Austria</div>
-			<div class="pais gre">Grecia</div>
-			<div class="pais mlt">Malta</div>
-			<div class="pais prt">Portugal</div>
-			<div class="pais sma">San Marino</div>
-			<div class="pais den">Dinamarca</div>
-			<div class="pais fin">Finlandia</div>
+			<div class="pais svn">Eslovenia</div>
+			<div class="pais ire">Irlanda</div>
 			<div class="pais isl">Islandia</div>
-			<div class="pais nor">Noruega</div>
-			<div class="pais sve">Suecia</div>
-			<div class="pais deu">Alemania</div>
+			<div class="pais ned">Países Bajos</div>
 			<div class="pais esp">España</div>
-			<div class="pais fra">Francia</div>
 			<div class="pais ita">Italia</div>
+			<div class="pais deu">Alemania</div>
+			<div class="pais fra">Francia</div>
 			<div class="pais uki">Reino Unido</div>
+			<div class="pais srb">Serbia</div>
 			<div class="pais swi">Suiza</div>
+			<div class="pais bel">Bélgica</div>
+			<div class="pais hrv">Croacia</div>
+			<div class="pais fin">Finlandia</div>
+			<div class="pais gre">Grecia</div>
+			<div class="pais mdv">Moldavia</div>
+			<div class="pais pol">Polonia</div>
+			<div class="pais sve">Suecia</div>
+			<div class="pais bul">Bulgaria</div>
+			<div class="pais ukr">Ucrania</div>
+			<div class="pais nor">Noruega</div>
+			<div class="pais aus">Australia</div>
+			<div class="pais cyp">Chipre</div>
+			<div class="pais den">Dinamarca</div>
+			<div class="pais cze">República Checa</div>
 		</div>
 	</div>
 	<div id="btnsend">Enviar</div>
