@@ -9,6 +9,7 @@
 	$getUserResultsJson = $_GET['getUserResultsJson'] ?? null;
 	$prune = $_GET['prune'] ?? null;
 	$closeVote = $_GET['closeVote'] ?? null;
+	$openVote = $_GET['openVote'] ?? null;
 
 	if ($getNewUser)
 	{
@@ -38,6 +39,7 @@
 			return $row["idUser"];
 		}
 	}
+
 	else if ($getResults)
 	{
 		$statement = $db->prepare("SELECT SUM(points) AS puntos, COUNTRIES.name AS pais FROM POINTS LEFT JOIN COUNTRIES ON COUNTRIES.id = POINTS.country GROUP BY country ORDER BY SUM(points) DESC");
@@ -60,10 +62,16 @@
 	}
 	else if ($getUserResultsJson)
 	{
+		$statement = $db->prepare("SELECT COUNT(DISTINCT(idUser)) as numVotantes FROM POINTS");
+		$result = $statement->execute();
+		$row = $result->fetchArray();
+		$numVotantes = $row['numVotantes'];
+
 		$statement = $db->prepare("SELECT USERS.handleUser AS handle, POINTS.points AS puntos, COUNTRIES.name AS pais, COUNTRIES.numero AS numero FROM POINTS LEFT JOIN COUNTRIES ON COUNTRIES.id = POINTS.country LEFT JOIN USERS ON USERS.idUser = POINTS.idUser ORDER BY handle ASC, puntos DESC");
 		$result = $statement->execute();
 		$contador = 1;
 		$fila = 0;
+		$yaHanVotado = 0;
 		$arrayVotos = [];
 		$yaRecontado = false;
 		echo("<pre>");
@@ -73,7 +81,7 @@
 				echo('"' . $contador .'": {' . "\n");
 				echo('  "name": "' . $row["handle"] . '",' . "\n");
 				echo('  "city": "",' . "\n");
-				echo('  "flag": "",' . "\n");
+				echo('  "flag": "owo",' . "\n");
 				echo('  "order": ' . $contador . ',' . "\n");
 				echo('  "hasVotes": true,' . "\n");
 				echo('  "isCountry": false,' . "\n");
@@ -89,10 +97,14 @@
 			$fila++;
 			if ($fila == 20) {
 				// var_dump($arrayVotos);
+				$yaHanVotado++;
 				echo (implode(", \n", $arrayVotos));
 				echo ("\n");
 				echo ('  ]' . "\n");
-				echo ('},' . "\n");
+				if ($yaHanVotado == $numVotantes)
+					echo ('}' . "\n");
+				else
+					echo ('},' . "\n");
 				$fila = 0;
 				$yaRecontado = false;
 				$arrayVotos = [];
@@ -116,6 +128,14 @@
 		$row = $result->fetchArray();
 		echo("<pre>");
 		echo("La votación se ha cerrado.\n");
+	}
+	else if ($openVote)
+	{
+		$statement = $db->prepare("UPDATE SETTINGS SET value=1 WHERE key='voteOpen'");
+		$result = $statement->execute();
+		$row = $result->fetchArray();
+		echo("<pre>");
+		echo("La votación se ha abierto.\n");
 	}
 	else
 	{
